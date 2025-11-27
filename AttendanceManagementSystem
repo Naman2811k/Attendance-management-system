@@ -1,0 +1,199 @@
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class AttendanceManagementSystem extends JFrame {
+
+    private DefaultTableModel studentModel;
+    private JTable studentTable;
+
+    private static final String STUDENT_FILE = "students.txt";
+    private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+    public AttendanceManagementSystem() {
+        setTitle("Advanced Attendance Management System");
+        setSize(850, 500);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        studentModel = new DefaultTableModel(new String[]{"ID", "Name"}, 0);
+        studentTable = new JTable(studentModel);
+        loadStudents();
+
+        add(new JScrollPane(studentTable), BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel();
+        JButton addBtn = new JButton("Add Student");
+        JButton delBtn = new JButton("Delete Student");
+        JButton markBtn = new JButton("Mark Attendance");
+        JButton reportBtn = new JButton("View Monthly Report");
+
+        bottomPanel.add(addBtn);
+        bottomPanel.add(delBtn);
+        bottomPanel.add(markBtn);
+        bottomPanel.add(reportBtn);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        // Add Student
+        addBtn.addActionListener(e -> addStudent());
+
+        // Delete Student
+        delBtn.addActionListener(e -> deleteStudent());
+
+        // Mark Attendance
+        markBtn.addActionListener(e -> markAttendance());
+
+        // Monthly Report
+        reportBtn.addActionListener(e -> showMonthlyReport());
+    }
+
+
+    // ---------------------- STUDENT FUNCTIONS ----------------------
+
+    private void addStudent() {
+        String id = JOptionPane.showInputDialog(this, "Enter Student ID:");
+        String name = JOptionPane.showInputDialog(this, "Enter Student Name:");
+
+        if (id == null || name == null || id.isEmpty() || name.isEmpty()) return;
+
+        studentModel.addRow(new Object[]{id, name});
+        saveStudents();
+    }
+
+    private void deleteStudent() {
+        int row = studentTable.getSelectedRow();
+        if (row >= 0) {
+            studentModel.removeRow(row);
+            saveStudents();
+        } else {
+            JOptionPane.showMessageDialog(this, "Select a student to delete.");
+        }
+    }
+
+    private void saveStudents() {
+        try (PrintWriter pw = new PrintWriter(new FileWriter(STUDENT_FILE))) {
+            for (int i = 0; i < studentModel.getRowCount(); i++) {
+                pw.println(studentModel.getValueAt(i, 0) + "," + studentModel.getValueAt(i, 1));
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void loadStudents() {
+        File f = new File(STUDENT_FILE);
+        if (!f.exists()) return;
+
+        try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                String[] p = line.split(",");
+                studentModel.addRow(new Object[]{p[0], p[1]});
+            }
+        } catch (Exception ignored) {}
+    }
+
+
+    // ---------------------- ATTENDANCE FUNCTIONS ----------------------
+
+    private void markAttendance() {
+        if (studentModel.getRowCount() == 0) {
+            JOptionPane.showMessageDialog(this, "No students available!");
+            return;
+        }
+
+        String today = sdf.format(new Date());
+        File attFile = new File("attendance_" + today + ".txt");
+
+        if (attFile.exists()) {
+            JOptionPane.showMessageDialog(this, "Attendance for today is already marked!");
+            return;
+        }
+
+        try (PrintWriter pw = new PrintWriter(new FileWriter(attFile))) {
+            for (int i = 0; i < studentModel.getRowCount(); i++) {
+
+                String id = studentModel.getValueAt(i, 0).toString();
+                String name = studentModel.getValueAt(i, 1).toString();
+
+                Object[] options = {"Present", "Absent"};
+                int choice = JOptionPane.showOptionDialog(
+                        this,
+                        "Mark attendance for: " + name,
+                        "Attendance",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE, null,
+                        options, options[0]
+                );
+
+                String status = (choice == 0) ? "P" : "A";
+                pw.println(id + "," + status);
+            }
+
+            JOptionPane.showMessageDialog(this, "Attendance Marked Successfully!");
+
+        } catch (Exception ignored) {}
+    }
+
+
+    // ---------------------- REPORT GENERATION ----------------------
+
+    private void showMonthlyReport() {
+        String month = JOptionPane.showInputDialog(this, "Enter month (YYYY-MM):");
+
+        if (month == null || !month.matches("\\d{4}-\\d{2}")) {
+            JOptionPane.showMessageDialog(this, "Invalid month format!");
+            return;
+        }
+
+        StringBuilder report = new StringBuilder();
+        report.append("Attendance Report for ").append(month).append("\n\n");
+
+        File dir = new File(".");
+        File[] files = dir.listFiles((d, name) -> name.startsWith("attendance_" + month));
+
+        if (files == null || files.length == 0) {
+            JOptionPane.showMessageDialog(this, "No attendance found for this month.");
+            return;
+        }
+
+        for (int i = 0; i < studentModel.getRowCount(); i++) {
+            String id = studentModel.getValueAt(i, 0).toString();
+            String name = studentModel.getValueAt(i, 1).toString();
+
+            int present = 0, total = 0;
+
+            for (File f : files) {
+                try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                    String line;
+
+                    while ((line = br.readLine()) != null) {
+                        String[] p = line.split(",");
+                        if (p[0].equals(id)) {
+                            total++;
+                            if (p[1].equals("P")) present++;
+                        }
+                    }
+
+                } catch (Exception ignored) {}
+            }
+
+            double percent = total == 0 ? 0 : (present * 100.0 / total);
+            report.append(String.format("%s (%s): %d/%d Present (%.2f%%)\n",
+                    name, id, present, total, percent));
+        }
+
+        JTextArea ta = new JTextArea(report.toString());
+        ta.setEditable(false);
+        JScrollPane sp = new JScrollPane(ta);
+
+        JOptionPane.showMessageDialog(this, sp);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new AttendanceManagementSystem().setVisible(true));
+    }
+}
